@@ -132,6 +132,7 @@ export interface FactCheckResult {
   evidenceScore: number;
   evidenceBand: 'Low' | 'Medium' | 'High';
   lastChecked: number;
+  cached?: boolean;
 }
 
 // Chat related interfaces
@@ -177,6 +178,30 @@ export interface TruthLensError {
   message: string;
   details?: any;
   timestamp: number;
+}
+
+// AI Adapter result types
+export interface AIResult {
+  response: string;
+  source: 'on-device' | 'cloud';
+  timestamp: number;
+  sessionId?: string;
+  model?: string;
+  tokensUsed?: number;
+}
+
+
+
+export interface EvidenceScore {
+  score: number;
+  band: 'Low' | 'Medium' | 'High';
+  breakdown: {
+    publisherDiversity: number;
+    recency: number;
+    corroboration: number;
+    counterClaims: number;
+  };
+  explanation: string[];
 }
 
 // Response wrapper
