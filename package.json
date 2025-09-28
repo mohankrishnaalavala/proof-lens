@@ -4,15 +4,16 @@
   "description": "AI-powered fact-checking and research assistant using Chrome's built-in AI",
   "type": "module",
   "scripts": {
-    "build": "npm run build:ts && npm run copy:assets",
+    "build": "npm run build:ts && npm run build:ui && npm run copy:assets",
     "build:ts": "tsc",
-    "copy:assets": "npm run copy:manifest && npm run copy:panel && npm run copy:icon",
+    "build:ui": "vite build",
+    "copy:assets": "npm run copy:manifest && npm run copy:icon",
     "copy:manifest": "cp manifest.json dist/",
-    "copy:panel": "cp -r panel dist/",
     "copy:icon": "cp icon48.png dist/",
     "watch": "tsc --watch",
+    "dev:ui": "vite build --watch",
     "clean": "rm -rf dist",
-    "dev": "npm run clean && npm run build && npm run watch",
+    "dev": "npm run clean && npm run build",
     "test": "echo \"Tests will be added in Phase 2\" && exit 0",
     "lint": "echo \"Linting will be added in Phase 2\" && exit 0"
   },
@@ -27,10 +28,33 @@
   "author": "TruthLens Team",
   "license": "MIT",
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.13",
     "@types/chrome": "^0.0.268",
-    "typescript": "^5.3.0"
+    "@types/node": "^24.5.2",
+    "@vitejs/plugin-react": "^5.0.4",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.13",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5.3.0",
+    "vite": "^7.1.7"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@radix-ui/react-collapsible": "^1.1.12",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-toast": "^1.2.15",
+    "@types/react": "^19.1.15",
+    "@types/react-dom": "^19.1.9",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.544.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tailwind-merge": "^3.3.1"
   }
 }

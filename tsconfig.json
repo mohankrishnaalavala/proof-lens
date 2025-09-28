@@ -26,14 +26,23 @@
     "noUncheckedIndexedAccess": true,
     "allowUnusedLabels": false,
     "allowUnreachableCode": false,
-    "types": ["chrome"]
+    "jsx": "react-jsx",
+    "types": ["chrome", "node"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      "@/lib/*": ["./lib/*"],
+      "@/components/*": ["./components/*"]
+    }
   },
   "include": [
     "bg/**/*",
     "content/**/*",
     "lib/**/*",
     "panel/**/*",
-    "options/**/*"
+    "options/**/*",
+    "components/**/*",
+    "styles/**/*"
   ],
   "exclude": [
     "node_modules",
