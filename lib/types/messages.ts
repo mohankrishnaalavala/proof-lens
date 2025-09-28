@@ -21,6 +21,8 @@ export interface ContentToServiceWorkerMessage extends TruthLensMessage {
   payload?: {
     text?: string;
     url?: string;
+    query?: string;
+    results?: SerpResult[];
     serpResults?: SerpResult[];
     action?: 'fact-check' | 'ask-analyst';
   };
