@@ -63,6 +63,7 @@ export function ClaimsTab() {
     }
   }, [extractedClaims, factCheckMutation, addFactCheck]);
 
+  // Future feature: manual text input fact-checking
   // const handleManualFactCheckText = async (text: string) => {
   //   if (!text.trim()) return;
   //
@@ -78,17 +79,23 @@ export function ClaimsTab() {
   //   }
   // };
 
-  const handleManualFactCheck = () => {
-    // Request text selection from current tab
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+  const handleManualFactCheck = async () => {
+    try {
+      // Request text selection from current tab
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, {
+        await chrome.tabs.sendMessage(tabs[0].id, {
           type: 'TL_GET_SELECTION',
           payload: { action: 'fact-check' },
           timestamp: Date.now()
         });
       }
-    });
+    } catch (error) {
+      console.error('[TruthLens Claims] Error requesting text selection:', error);
+
+      // Fallback: prompt user to select text
+      alert('Please select some text on the page and try again, or use the keyboard shortcut Alt+Shift+F');
+    }
   };
 
   const isLoading = isAnalyzing || isExtractingClaims || factCheckMutation.isPending;
@@ -119,27 +126,30 @@ export function ClaimsTab() {
   if (factChecks.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-6 p-6">
-        <div className="flex items-center justify-center w-16 h-16 bg-muted rounded-full">
-          <Search className="w-8 h-8 text-muted-foreground" />
+        <div className="flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-100 to-blue-100 rounded-full shadow-sm">
+          <Search className="w-10 h-10 text-green-600" />
         </div>
-        
-        <div className="text-center space-y-2">
-          <h3 className="text-lg font-semibold">Fact Check Claims</h3>
-          <p className="text-sm text-muted-foreground max-w-md">
-            Select text on any webpage and right-click to fact-check it with TruthLens. 
+
+        <div className="text-center space-y-3">
+          <h3 className="text-xl font-semibold text-foreground">Fact Check Claims</h3>
+          <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
+            Select text on any webpage to fact-check claims and verify information.
             We'll find independent reviews and show evidence scores.
           </p>
         </div>
 
-        <div className="space-y-3">
-          <Button onClick={handleManualFactCheck} className="w-full">
-            <Search className="w-4 h-4 mr-2" />
+        <div className="space-y-4 w-full max-w-md">
+          <Button
+            onClick={handleManualFactCheck}
+            className="w-full h-12 bg-green-600 hover:bg-green-700 transition-colors"
+          >
+            <Search className="w-5 h-5 mr-2" />
             Fact-check Selection
           </Button>
-          
+
           <div className="text-center">
             <p className="text-xs text-muted-foreground">
-              Or use keyboard shortcut: <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Alt+Shift+F</kbd>
+              Or use keyboard shortcut: <kbd className="px-2 py-1 bg-muted rounded text-xs font-mono">Alt+Shift+F</kbd>
             </p>
           </div>
         </div>

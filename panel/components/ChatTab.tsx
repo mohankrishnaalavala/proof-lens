@@ -2,14 +2,14 @@ import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MessageCircle, Send, AlertCircle } from 'lucide-react';
-import { useCapabilities } from '@/lib/state';
+import { MessageCircle, Send, AlertCircle, Lightbulb, Search } from 'lucide-react';
+import { useCapabilities, useChatMutation } from '@/lib/state';
 import type { ChatMessage } from '@/lib/types/messages';
 
 export function ChatTab() {
   const capabilities = useCapabilities();
-  // const { setSelectedText } = useTruthLensStore();
-  // const chatMutation = useChatMutation();
+  // const { setSelectedText } = useTruthLensStore(); // Unused for now
+  const chatMutation = useChatMutation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -49,15 +49,21 @@ export function ChatTab() {
     setIsLoading(true);
 
     try {
-      // TODO: This will be implemented in Agent 4 (AI Adapters)
-      // For now, show mock response
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Use the actual AI chat mutation
+      const prompt = contextText
+        ? `Context: ${contextText}\n\nQuestion: ${userMessage.content}`
+        : userMessage.content;
+
+      const response = await chatMutation.mutateAsync({
+        message: prompt,
+        useCloud: !capabilities?.chromeAI?.promptAPI?.available
+      });
 
       const source = capabilities?.chromeAI?.promptAPI?.available ? 'on-device' : 'cloud';
-      
+
       const assistantMessage: ChatMessage = {
         id: `msg_${Date.now() + 1}`,
-        content: `I understand you're asking about: "${userMessage.content}". This is a mock response that will be replaced with actual AI analysis in the next phase. ${contextText ? `I can see you've provided context about: "${contextText.substring(0, 100)}..."` : ''}`,
+        content: (response as any).text || (response as any).response || response.toString() || 'I apologize, but I was unable to generate a response.',
         role: 'assistant',
         timestamp: Date.now(),
         source,
@@ -65,8 +71,24 @@ export function ChatTab() {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+
+      // Clear context after successful response
+      if (contextText) {
+        setContextText(null);
+      }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('[TruthLens Chat] Error sending message:', error);
+
+      // Show error message to user
+      const errorMessage: ChatMessage = {
+        id: `msg_${Date.now() + 1}`,
+        content: 'I apologize, but I encountered an error while processing your request. Please try again.',
+        role: 'assistant',
+        timestamp: Date.now(),
+        source: 'cloud' as const
+      };
+
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -86,19 +108,45 @@ export function ChatTab() {
   if (messages.length === 0 && !contextText) {
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-6 p-6">
-        <div className="flex items-center justify-center w-16 h-16 bg-muted rounded-full">
-          <MessageCircle className="w-8 h-8 text-muted-foreground" />
+        <div className="flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full shadow-sm">
+          <MessageCircle className="w-10 h-10 text-blue-600" />
         </div>
-        
-        <div className="text-center space-y-2">
-          <h3 className="text-lg font-semibold">Ask the Analyst</h3>
-          <p className="text-sm text-muted-foreground max-w-md">
-            Chat with our AI analyst for research help. Uses on-device AI when available, 
-            with cloud fallback option.
+
+        <div className="text-center space-y-3">
+          <h3 className="text-xl font-semibold text-foreground">Ask the Analyst</h3>
+          <p className="text-sm text-muted-foreground max-w-md leading-relaxed">
+            Chat with our AI analyst for research help, fact verification, and analysis.
+            Uses on-device AI when available with cloud fallback.
           </p>
         </div>
 
-        <div className="w-full max-w-md space-y-3">
+        <div className="w-full max-w-md space-y-4">
+          {/* Quick Action Buttons */}
+          <div className="grid grid-cols-1 gap-2">
+            <Button
+              onClick={() => setInputValue("What are the key facts about this topic?")}
+              variant="outline"
+              className="justify-start h-auto p-3 text-left hover:bg-blue-50 hover:border-blue-200 transition-colors"
+            >
+              <div className="flex items-center space-x-2">
+                <Lightbulb className="w-4 h-4 text-blue-600" />
+                <span className="text-sm">Suggest key facts</span>
+              </div>
+            </Button>
+
+            <Button
+              onClick={() => setInputValue("Can you verify this information?")}
+              variant="outline"
+              className="justify-start h-auto p-3 text-left hover:bg-green-50 hover:border-green-200 transition-colors"
+            >
+              <div className="flex items-center space-x-2">
+                <Search className="w-4 h-4 text-green-600" />
+                <span className="text-sm">Verify information</span>
+              </div>
+            </Button>
+          </div>
+
+          {/* Input Area */}
           <div className="flex items-center space-x-2">
             <input
               type="text"
@@ -106,20 +154,20 @@ export function ChatTab() {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
-              className="flex-1 px-3 py-2 border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="flex-1 px-4 py-3 border border-input rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             />
-            <Button 
-              onClick={handleSendMessage} 
+            <Button
+              onClick={handleSendMessage}
               disabled={!inputValue.trim() || isLoading}
-              size="sm"
+              className="px-4 py-3 bg-blue-600 hover:bg-blue-700 transition-colors"
             >
               <Send className="w-4 h-4" />
             </Button>
           </div>
-          
+
           <div className="text-center">
             <p className="text-xs text-muted-foreground">
-              Or select text and use: <kbd className="px-1 py-0.5 bg-muted rounded text-xs">Alt+Shift+A</kbd>
+              Or select text and use: <kbd className="px-2 py-1 bg-muted rounded text-xs font-mono">Alt+Shift+A</kbd>
             </p>
           </div>
         </div>
