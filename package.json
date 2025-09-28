@@ -1,0 +1,36 @@
+{
+  "name": "truthlens",
+  "version": "0.1.0",
+  "description": "AI-powered fact-checking and research assistant using Chrome's built-in AI",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:ts && npm run copy:assets",
+    "build:ts": "tsc",
+    "copy:assets": "npm run copy:manifest && npm run copy:panel && npm run copy:icon",
+    "copy:manifest": "cp manifest.json dist/",
+    "copy:panel": "cp -r panel dist/",
+    "copy:icon": "cp icon48.png dist/",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "dev": "npm run clean && npm run build && npm run watch",
+    "test": "echo \"Tests will be added in Phase 2\" && exit 0",
+    "lint": "echo \"Linting will be added in Phase 2\" && exit 0"
+  },
+  "keywords": [
+    "chrome-extension",
+    "fact-checking",
+    "ai",
+    "research",
+    "truth",
+    "verification"
+  ],
+  "author": "TruthLens Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

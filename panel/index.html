@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TruthLens</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #ffffff;
+      color: #1f2937;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .header {
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      width: 24px;
+      height: 24px;
+      background: #3b82f6;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 12px;
+    }
+
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .status-badge {
+      margin-left: auto;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 500;
+      background: #f0f9ff;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+    }
+
+    .tabs {
+      display: flex;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 12px 16px;
+      text-align: center;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      color: #64748b;
+      transition: all 0.2s;
+    }
+
+    .tab.active {
+      color: #3b82f6;
+      background: #ffffff;
+      border-bottom: 2px solid #3b82f6;
+    }
+
+    .tab:hover:not(.active) {
+      color: #475569;
+      background: #f1f5f9;
+    }
+
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .placeholder {
+      text-align: center;
+      padding: 40px 20px;
+      color: #64748b;
+    }
+
+    .placeholder-icon {
+      width: 48px;
+      height: 48px;
+      background: #f1f5f9;
+      border-radius: 50%;
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .placeholder h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #374151;
+    }
+
+    .placeholder p {
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .action-button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 16px;
+      transition: background 0.2s;
+    }
+
+    .action-button:hover {
+      background: #2563eb;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #64748b;
+      font-size: 14px;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #e2e8f0;
+      border-top: 2px solid #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">TL</div>
+    <div class="title">TruthLens</div>
+    <div class="status-badge" id="status-badge">Ready</div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="claims">Claims</button>
+    <button class="tab" data-tab="chat">Chat</button>
+    <button class="tab" data-tab="brief">Brief</button>
+  </div>
+
+  <div class="content">
+    <div class="tab-content active" id="claims-content">
+      <div class="placeholder">
+        <div class="placeholder-icon">🔍</div>
+        <h3>Fact Check Claims</h3>
+        <p>Select text on any webpage and right-click to fact-check it with TruthLens. We'll find independent reviews and show evidence scores.</p>
+        <button class="action-button" onclick="showInstructions('claims')">How to use</button>
+      </div>
+    </div>
+
+    <div class="tab-content" id="chat-content">
+      <div class="placeholder">
+        <div class="placeholder-icon">💬</div>
+        <h3>Ask the Analyst</h3>
+        <p>Chat with our AI analyst for research help. Uses on-device AI when available, with cloud fallback option.</p>
+        <button class="action-button" onclick="showInstructions('chat')">Start chatting</button>
+      </div>
+    </div>
+
+    <div class="tab-content" id="brief-content">
+      <div class="placeholder">
+        <div class="placeholder-icon">📄</div>
+        <h3>Decision Brief</h3>
+        <p>Export your fact-checks and analysis as a professional PDF report with facts, analysis, and recommendations.</p>
+        <button class="action-button" onclick="showInstructions('brief')">Create brief</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="panel.js"></script>
+</body>
+</html>
