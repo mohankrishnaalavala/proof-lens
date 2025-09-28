@@ -3,13 +3,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { MessageCircle, Send, AlertCircle } from 'lucide-react';
-import type { ChromeAICapabilities, ChatMessage } from '@/lib/types/messages';
+import { useCapabilities } from '@/lib/state';
+import type { ChatMessage } from '@/lib/types/messages';
 
-interface ChatTabProps {
-  capabilities: ChromeAICapabilities | null;
-}
-
-export function ChatTab({ capabilities }: ChatTabProps) {
+export function ChatTab() {
+  const capabilities = useCapabilities();
+  // const { setSelectedText } = useTruthLensStore();
+  // const chatMutation = useChatMutation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -53,7 +53,7 @@ export function ChatTab({ capabilities }: ChatTabProps) {
       // For now, show mock response
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      const source = capabilities?.promptAPI?.available ? 'on-device' : 'cloud';
+      const source = capabilities?.chromeAI?.promptAPI?.available ? 'on-device' : 'cloud';
       
       const assistantMessage: ChatMessage = {
         id: `msg_${Date.now() + 1}`,
@@ -124,7 +124,7 @@ export function ChatTab({ capabilities }: ChatTabProps) {
           </div>
         </div>
 
-        {!capabilities?.promptAPI?.available && (
+        {!capabilities?.chromeAI?.promptAPI?.available && (
           <Card className="w-full max-w-md border-orange-200 bg-orange-50">
             <CardContent className="p-4">
               <div className="flex items-start space-x-2">

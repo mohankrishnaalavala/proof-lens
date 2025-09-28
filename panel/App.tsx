@@ -1,50 +1,61 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ClaimsTab } from './components/ClaimsTab';
 import { ChatTab } from './components/ChatTab';
 import { BriefTab } from './components/BriefTab';
-import type {
-  ServiceWorkerToPanelMessage,
-  ChromeAICapabilities
-} from '@/lib/types/messages';
+import {
+  useTruthLensStore,
+  useUIState,
+  useCapabilities,
+  createQueryClient,
+  useCapabilitiesQuery
+} from '@/lib/state';
+import type { ServiceWorkerToPanelMessage } from '@/lib/types/messages';
 
-interface AppState {
-  activeTab: string;
-  capabilities: ChromeAICapabilities | null;
-  isLoading: boolean;
-}
+// Create query client instance
+const queryClient = createQueryClient();
 
-export function App() {
-  const [state, setState] = useState<AppState>({
-    activeTab: 'claims',
-    capabilities: null,
-    isLoading: true
-  });
+function AppContent() {
+  const ui = useUIState();
+  const capabilities = useCapabilities();
+  const { setActiveTab, setLoading, updateCapabilities } = useTruthLensStore();
+
+  // Query for capabilities
+  const { data: capabilitiesData, isLoading: capabilitiesLoading } = useCapabilitiesQuery();
+
+  // Update capabilities when query data changes
+  useEffect(() => {
+    if (capabilitiesData) {
+      updateCapabilities(capabilitiesData);
+    }
+    setLoading(capabilitiesLoading);
+  }, [capabilitiesData, capabilitiesLoading, updateCapabilities, setLoading]);
 
   useEffect(() => {
     // Initialize message handling
     const handleMessage = (message: ServiceWorkerToPanelMessage) => {
       console.debug('[TruthLens Panel] Received message:', message);
-      
+
       switch (message.type) {
         case 'TL_CAPABILITY_STATUS':
-          setState(prev => ({
-            ...prev,
-            capabilities: message.payload?.capabilities || null,
-            isLoading: false
-          }));
+          if (message.payload?.capabilities) {
+            updateCapabilities(message.payload.capabilities);
+          }
+          setLoading(false);
           break;
-          
+
         case 'TL_CHAT_OPEN':
-          setState(prev => ({ ...prev, activeTab: 'chat' }));
+          setActiveTab('chat');
           break;
-          
+
         case 'TL_TEXT_EXTRACTED':
           if (message.payload?.action === 'fact-check') {
-            setState(prev => ({ ...prev, activeTab: 'claims' }));
+            setActiveTab('claims');
           } else if (message.payload?.action === 'ask-analyst') {
-            setState(prev => ({ ...prev, activeTab: 'chat' }));
+            setActiveTab('chat');
           }
           break;
       }
@@ -59,24 +70,26 @@ export function App() {
       timestamp: Date.now()
     }).catch(error => {
       console.error('[TruthLens Panel] Error requesting capabilities:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
+      setLoading(false);
     });
 
     return () => {
       chrome.runtime.onMessage.removeListener(handleMessage);
     };
-  }, []);
+  }, [setLoading, updateCapabilities, setActiveTab]);
 
   const getCapabilityStatus = () => {
-    if (!state.capabilities) return { text: 'Loading...', variant: 'secondary' as const };
-    
-    const hasOnDevice = state.capabilities.promptAPI?.available || 
-                       state.capabilities.summarizerAPI?.available;
-    
+    if (!capabilities.chromeAI) return { text: 'Loading...', variant: 'secondary' as const };
+
+    const hasOnDevice = capabilities.chromeAI?.promptAPI?.available ||
+                       capabilities.chromeAI?.summarizerAPI?.available;
+
     if (hasOnDevice) {
       return { text: 'On-device', variant: 'source-ondevice' as const };
+    } else if (capabilities.chromeAI) {
+      return { text: 'Cloud', variant: 'source-cloud' as const };
     } else {
-      return { text: 'Cloud only', variant: 'source-cloud' as const };
+      return { text: 'Limited', variant: 'secondary' as const };
     }
   };
 
@@ -99,9 +112,9 @@ export function App() {
 
       {/* Main Content */}
       <div className="extension-content">
-        <Tabs 
-          value={state.activeTab} 
-          onValueChange={(value: string) => setState(prev => ({ ...prev, activeTab: value }))}
+        <Tabs
+          value={ui.activeTab}
+          onValueChange={(value) => setActiveTab(value as any)}
           className="w-full h-full flex flex-col"
         >
           <TabsList className="grid w-full grid-cols-3 m-4 mb-0">
@@ -112,13 +125,13 @@ export function App() {
           
           <div className="flex-1 overflow-hidden">
             <TabsContent value="claims" className="h-full m-0 p-4">
-              <ClaimsTab capabilities={state.capabilities} />
+              <ClaimsTab />
             </TabsContent>
-            
+
             <TabsContent value="chat" className="h-full m-0 p-4">
-              <ChatTab capabilities={state.capabilities} />
+              <ChatTab />
             </TabsContent>
-            
+
             <TabsContent value="brief" className="h-full m-0 p-4">
               <BriefTab />
             </TabsContent>
@@ -126,5 +139,14 @@ export function App() {
         </Tabs>
       </div>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppContent />
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
   );
 }

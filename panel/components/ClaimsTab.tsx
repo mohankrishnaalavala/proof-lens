@@ -2,74 +2,81 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ClaimCard } from './ClaimCard';
-import { Search, AlertCircle } from 'lucide-react';
-import type { ChromeAICapabilities, FactCheckResult } from '@/lib/types/messages';
+import { Search, AlertCircle, Loader2 } from 'lucide-react';
+import {
+  useFactChecks,
+  useCapabilities,
+  useExtractClaimsQuery,
+  useFactCheckMutation,
+  useTruthLensStore
+} from '@/lib/state';
+// import type { FactCheckResult } from '@/lib/types/messages';
 
-interface ClaimsTabProps {
-  capabilities: ChromeAICapabilities | null;
-}
+export function ClaimsTab() {
+  const factChecks = useFactChecks();
+  // const ui = useUIState();
+  const capabilities = useCapabilities();
+  const { addFactCheck, setSelectedText } = useTruthLensStore();
 
-export function ClaimsTab({ capabilities }: ClaimsTabProps) {
-  const [claims, setClaims] = useState<FactCheckResult[]>([]);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [extractedText, setExtractedText] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Extract claims from text
+  const {
+    data: extractedClaims,
+    isLoading: isExtractingClaims,
+    error: extractError
+  } = useExtractClaimsQuery(extractedText || '', !!extractedText);
+
+  // Fact-check mutation
+  const factCheckMutation = useFactCheckMutation();
 
   useEffect(() => {
     // Listen for text extraction messages
     const handleMessage = (message: any) => {
       if (message.type === 'TL_TEXT_EXTRACTED' && message.payload?.action === 'fact-check') {
         setExtractedText(message.payload.text);
-        if (message.payload.text) {
-          handleFactCheck(message.payload.text);
-        }
+        setSelectedText(message.payload.text);
       }
     };
 
     chrome.runtime.onMessage.addListener(handleMessage);
     return () => chrome.runtime.onMessage.removeListener(handleMessage);
-  }, []);
+  }, [setSelectedText]);
 
-  const handleFactCheck = async (text: string) => {
-    setIsAnalyzing(true);
-    
-    try {
-      // TODO: This will be implemented in Agent 4 (AI Adapters)
-      // For now, show mock data
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const mockClaim: FactCheckResult = {
-        claim: text.substring(0, 200) + (text.length > 200 ? '...' : ''),
-        claimId: `claim_${Date.now()}`,
-        reviews: [
-          {
-            publisher: 'FactCheck.org',
-            url: 'https://factcheck.org/example',
-            title: 'Analysis of this claim',
-            reviewDate: new Date().toISOString(),
-            textualRating: 'Mostly True',
-            languageCode: 'en'
-          },
-          {
-            publisher: 'Snopes',
-            url: 'https://snopes.com/example',
-            title: 'Fact-check: Claim verification',
-            reviewDate: new Date(Date.now() - 86400000).toISOString(),
-            textualRating: 'True',
-            languageCode: 'en'
-          }
-        ],
-        evidenceScore: 75,
-        evidenceBand: 'High',
-        lastChecked: Date.now()
-      };
-      
-      setClaims(prev => [mockClaim, ...prev]);
-    } catch (error) {
-      console.error('Error fact-checking:', error);
-    } finally {
+  // Auto fact-check extracted claims
+  useEffect(() => {
+    if (extractedClaims && extractedClaims.length > 0) {
+      setIsAnalyzing(true);
+
+      // Fact-check each claim
+      extractedClaims.forEach(async (claim) => {
+        try {
+          const result = await factCheckMutation.mutateAsync(claim);
+          addFactCheck(result);
+        } catch (error) {
+          console.error('[TruthLens Claims] Failed to fact-check claim:', error);
+        }
+      });
+
       setIsAnalyzing(false);
     }
-  };
+  }, [extractedClaims, factCheckMutation, addFactCheck]);
+
+  // const handleManualFactCheckText = async (text: string) => {
+  //   if (!text.trim()) return;
+  //
+  //   setIsAnalyzing(true);
+  //
+  //   try {
+  //     const result = await factCheckMutation.mutateAsync(text.trim());
+  //     addFactCheck(result);
+  //   } catch (error) {
+  //     console.error('[TruthLens Claims] Manual fact-check failed:', error);
+  //   } finally {
+  //     setIsAnalyzing(false);
+  //   }
+  // };
 
   const handleManualFactCheck = () => {
     // Request text selection from current tab
@@ -84,11 +91,17 @@ export function ClaimsTab({ capabilities }: ClaimsTabProps) {
     });
   };
 
-  if (isAnalyzing) {
+  const isLoading = isAnalyzing || isExtractingClaims || factCheckMutation.isPending;
+
+  if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-4">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        <p className="text-sm text-muted-foreground">Analyzing claims...</p>
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">
+          {isExtractingClaims ? 'Extracting claims...' :
+           factCheckMutation.isPending ? 'Fact-checking...' :
+           'Analyzing claims...'}
+        </p>
         {extractedText && (
           <Card className="w-full max-w-md">
             <CardContent className="p-4">
@@ -103,7 +116,7 @@ export function ClaimsTab({ capabilities }: ClaimsTabProps) {
     );
   }
 
-  if (claims.length === 0) {
+  if (factChecks.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full space-y-6 p-6">
         <div className="flex items-center justify-center w-16 h-16 bg-muted rounded-full">
@@ -131,7 +144,7 @@ export function ClaimsTab({ capabilities }: ClaimsTabProps) {
           </div>
         </div>
 
-        {!capabilities?.summarizerAPI?.available && (
+        {!capabilities.chromeAI?.summarizerAPI?.available && (
           <Card className="w-full max-w-md border-orange-200 bg-orange-50">
             <CardContent className="p-4">
               <div className="flex items-start space-x-2">
@@ -161,10 +174,24 @@ export function ClaimsTab({ capabilities }: ClaimsTabProps) {
       </div>
 
       <div className="space-y-4">
-        {claims.map((claim) => (
+        {factChecks.map((claim) => (
           <ClaimCard key={claim.claimId} claim={claim} />
         ))}
       </div>
+
+      {extractError && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4">
+            <div className="flex items-start space-x-2">
+              <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium text-red-800">Error extracting claims</p>
+                <p className="text-red-700">{extractError.message}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
