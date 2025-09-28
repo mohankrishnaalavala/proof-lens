@@ -3,10 +3,20 @@
  * Handles text selection, page parsing, SERP overlay, and message passing
  */
 
-import type {
-  ContentToServiceWorkerMessage,
-  ServiceWorkerToContentMessage
-} from '../lib/types/messages.js';
+// Type definitions for Chrome extension messaging
+interface TruthLensMessage {
+  type: string;
+  timestamp: number;
+  payload?: any;
+}
+
+interface ContentToServiceWorkerMessage extends TruthLensMessage {
+  type: 'TL_GET_SELECTION' | 'TL_GET_PAGE_TEXT' | 'TL_SERP_PARSED';
+}
+
+interface ServiceWorkerToContentMessage extends TruthLensMessage {
+  type: 'TL_GET_SELECTION' | 'TL_GET_PAGE_TEXT' | 'TL_INJECT_SERP_OVERLAY' | 'TL_SHOW_SELECTION_BUBBLE' | 'TL_CHECK_CAPABILITIES';
+}
 
 // Global state
 let selectionBubbleTimeout: NodeJS.Timeout | null = null;
@@ -49,7 +59,7 @@ chrome.runtime.onMessage.addListener((message: ServiceWorkerToContentMessage, _s
       return true; // Async response
     }
 
-    handleMessage(message);
+    processMessage(message);
     sendResponse({ success: true, timestamp: Date.now() });
   } catch (error) {
     console.error('[TruthLens Content] Error handling message:', error);
@@ -66,7 +76,7 @@ chrome.runtime.onMessage.addListener((message: ServiceWorkerToContentMessage, _s
 /**
  * Handle messages from service worker
  */
-function handleMessage(message: ServiceWorkerToContentMessage): void {
+function processMessage(message: ServiceWorkerToContentMessage): void {
   switch (message.type) {
     case 'TL_GET_SELECTION':
       handleGetSelection(message.payload?.action);
@@ -171,6 +181,7 @@ function handleGetSelection(action: 'fact-check' | 'ask-analyst' = 'fact-check')
   
   sendMessageToServiceWorker({
     type: 'TL_GET_SELECTION',
+    timestamp: Date.now(),
     payload: {
       text: selectedText,
       url: window.location.href,
@@ -195,6 +206,7 @@ function handleGetPageText(action: 'fact-check' | 'ask-analyst' = 'fact-check'):
   
   sendMessageToServiceWorker({
     type: 'TL_GET_PAGE_TEXT',
+    timestamp: Date.now(),
     payload: {
       text: pageText,
       url: window.location.href,
@@ -412,6 +424,7 @@ function handleSerpParsing(): void {
   if (results.length > 0) {
     sendMessageToServiceWorker({
       type: 'TL_SERP_PARSED',
+      timestamp: Date.now(),
       payload: {
         query: getSearchQuery(),
         results,
