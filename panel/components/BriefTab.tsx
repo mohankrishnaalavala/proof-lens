@@ -2,24 +2,32 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileText, Download, Plus } from 'lucide-react';
+import { useFactChecks, useChatHistory } from '@/lib/state/store';
+import { useBriefCompiler } from '@/lib/state/brief';
 
 export function BriefTab() {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const factChecks = useFactChecks();
+  const chatHistory = useChatHistory();
+  const { compileBrief } = useBriefCompiler();
 
   const handleGenerateBrief = async () => {
     setIsGenerating(true);
-    
-    // TODO: This will be implemented in Agent 6 (Export & PDF Generation)
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    setIsGenerating(false);
-    // TODO: Generate and download PDF
+    try {
+      await compileBrief();
+      setLastUpdated(Date.now());
+    } catch (e) {
+      console.error('[TruthLens Brief] Failed to compile brief:', e);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const mockBriefData = {
-    factsCount: 0,
-    chatMessagesCount: 0,
-    lastUpdated: null
+    factsCount: factChecks.length,
+    chatMessagesCount: chatHistory.length,
+    lastUpdated,
   };
 
   if (mockBriefData.factsCount === 0 && mockBriefData.chatMessagesCount === 0) {

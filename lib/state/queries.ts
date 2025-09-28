@@ -10,6 +10,9 @@ import { promptAdapter, extractClaimsPrompt, synthesizeSearchResults } from '../
 import { summarizerAdapter, extractClaimsFromText } from '../adapters/summarizer';
 import { firebaseAdapter } from '../adapters/firebase';
 
+import { truthLensCache } from './cache';
+import { promptViaContent, extractClaimsViaContent } from '../bridge/onDevice';
+
 // Query Keys
 export const queryKeys = {
   capabilities: ['capabilities'] as const,
@@ -94,7 +97,18 @@ export const useFactCheckQuery = (claim: string, enabled: boolean = true) => {
       if (!claim || claim.trim().length < 10) {
         throw new Error('Claim too short for fact-checking');
       }
-      return await factCheckAdapter.factCheck(claim);
+      // Try persistent cache first (IndexedDB)
+      try {
+        const cached = await truthLensCache.getFactCheck(claim);
+        if (cached) return cached;
+      } catch (e) {
+        console.debug('[TruthLens Queries] IDB getFactCheck failed, continuing:', e);
+      }
+
+      const result = await factCheckAdapter.factCheck(claim);
+      // Store in persistent cache (best-effort)
+      try { await truthLensCache.storeFactCheck(claim, result); } catch (e) { console.debug('[TruthLens Queries] IDB storeFactCheck failed:', e); }
+      return result;
     },
     enabled: enabled && !!claim && claim.trim().length >= 10,
     staleTime: 24 * 60 * 60 * 1000, // 24 hours - fact checks are relatively stable
@@ -113,38 +127,43 @@ export const useExtractClaimsQuery = (text: string, enabled: boolean = true) => 
 
       try {
         // Try Chrome Summarizer API first
-        return await extractClaimsFromText(text);
+        const onDeviceClaims = await extractClaimsFromText(text);
+        if (onDeviceClaims && onDeviceClaims.length > 0) return onDeviceClaims;
       } catch (error) {
-        console.debug('[TruthLens Queries] Summarizer failed, trying Prompt API:', error);
-        
-        // Fallback to Prompt API
-        try {
-          const result = await extractClaimsPrompt(text);
-          // Parse the response to extract claims
-          const claims = result.response
+        console.debug('[TruthLens Queries] Summarizer threw, will try other paths:', error);
+      }
+
+      // Try via content script (on-device bridge)
+      try {
+        const bridgedClaims = await extractClaimsViaContent(text);
+        if (bridgedClaims && bridgedClaims.length > 0) return bridgedClaims;
+      } catch (bridgeErr) {
+        console.debug('[TruthLens Queries] Content bridge extract failed:', bridgeErr);
+      }
+
+      // Fallback to Prompt API (on-device in panel, may fail)
+      try {
+        const result = await extractClaimsPrompt(text);
+        const claims = result.response
+          .split('\n')
+          .map(line => line.trim())
+          .map(line => line.replace(/^\d+\.\s*/, '').replace(/^[-*]\s*/, ''))
+          .filter(claim => claim.length > 10);
+        return claims;
+      } catch (promptError) {
+        console.debug('[TruthLens Queries] Prompt API failed, trying cloud fallback:', promptError);
+
+        // Final fallback to cloud
+        if (firebaseAdapter.isAvailable()) {
+          const cloudResult = await firebaseAdapter.extractClaimsCloud(text);
+          const claims = cloudResult.response
             .split('\n')
-            .filter(line => line.trim().match(/^\d+\./))
-            .map(line => line.replace(/^\d+\.\s*/, '').trim())
+            .map(line => line.trim())
+            .map(line => line.replace(/^\d+\.\s*/, '').replace(/^[-*]\s*/, ''))
             .filter(claim => claim.length > 10);
-          
           return claims;
-        } catch (promptError) {
-          console.debug('[TruthLens Queries] Prompt API failed, trying cloud fallback:', promptError);
-          
-          // Final fallback to cloud
-          if (firebaseAdapter.isAvailable()) {
-            const cloudResult = await firebaseAdapter.extractClaimsCloud(text);
-            const claims = cloudResult.response
-              .split('\n')
-              .filter(line => line.trim().match(/^\d+\./))
-              .map(line => line.replace(/^\d+\.\s*/, '').trim())
-              .filter(claim => claim.length > 10);
-            
-            return claims;
-          }
-          
-          throw new Error('No AI service available for claim extraction');
         }
+        throw new Error('No AI service available for claim extraction');
       }
     },
     enabled: enabled && !!text && text.trim().length >= 50,
@@ -171,12 +190,12 @@ export const useSearchSynthesisQuery = (
         return await synthesizeSearchResults(query, results);
       } catch (error) {
         console.debug('[TruthLens Queries] On-device synthesis failed, trying cloud:', error);
-        
+
         // Fallback to cloud
         if (firebaseAdapter.isAvailable()) {
           return await firebaseAdapter.synthesizeSearchResultsCloud(query, results);
         }
-        
+
         throw new Error('No AI service available for search synthesis');
       }
     },
@@ -197,7 +216,7 @@ export const useFactCheckMutation = () => {
     onSuccess: (data, claim) => {
       // Update the cache with the new result
       queryClient.setQueryData(queryKeys.factCheck(claim), data);
-      
+
       // Invalidate related queries
       queryClient.invalidateQueries({ queryKey: ['factCheck'] });
     },
@@ -210,29 +229,41 @@ export const useFactCheckMutation = () => {
 // Prompt Mutation
 export const usePromptMutation = () => {
   return useMutation({
-    mutationFn: async ({ 
-      message, 
-      systemPrompt, 
-      useCloud = false 
-    }: { 
-      message: string; 
-      systemPrompt?: string; 
-      useCloud?: boolean; 
+    mutationFn: async ({
+      message,
+      systemPrompt,
+      useCloud = false
+    }: {
+      message: string;
+      systemPrompt?: string;
+      useCloud?: boolean;
     }): Promise<AIResult> => {
       if (useCloud && firebaseAdapter.isAvailable()) {
         return await firebaseAdapter.prompt(message, systemPrompt ? { systemPrompt } : {});
       }
 
-      try {
-        return await promptAdapter.promptOnce(message, systemPrompt ? { systemPrompt } : {});
-      } catch (error) {
-        // Auto-fallback to cloud if on-device fails
-        if (firebaseAdapter.isAvailable()) {
-          console.debug('[TruthLens Queries] Auto-fallback to cloud for prompt');
-          return await firebaseAdapter.prompt(message, systemPrompt ? { systemPrompt } : {});
+      // Prefer on-device in panel; if unavailable, try content bridge
+      const onDeviceAvailable = await promptAdapter.checkAvailability().catch(() => false);
+      if (onDeviceAvailable) {
+        try {
+          return await promptAdapter.promptOnce(message, systemPrompt ? { systemPrompt } : {});
+        } catch (error) {
+          console.debug('[TruthLens Queries] On-device prompt failed in panel, trying bridge:', error);
         }
-        throw error;
       }
+
+      try {
+        return await promptViaContent(message, systemPrompt);
+      } catch (bridgeErr) {
+        console.debug('[TruthLens Queries] Content-bridge prompt failed:', bridgeErr);
+      }
+
+      // Final fallback to cloud
+      if (firebaseAdapter.isAvailable()) {
+        console.debug('[TruthLens Queries] Auto-fallback to cloud for prompt');
+        return await firebaseAdapter.prompt(message, systemPrompt ? { systemPrompt } : {});
+      }
+      throw new Error('No AI service available for prompt');
     },
     onError: (error) => {
       console.error('[TruthLens Queries] Prompt mutation failed:', error);
@@ -243,39 +274,48 @@ export const usePromptMutation = () => {
 // Chat Mutation
 export const useChatMutation = () => {
   return useMutation({
-    mutationFn: async ({ 
-      message, 
-      context, 
-      useCloud = false 
-    }: { 
-      message: string; 
-      context?: string; 
-      useCloud?: boolean; 
+    mutationFn: async ({
+      message,
+      context,
+      useCloud = false
+    }: {
+      message: string;
+      context?: string;
+      useCloud?: boolean;
     }): Promise<AIResult> => {
       if (useCloud && firebaseAdapter.isAvailable()) {
         return await firebaseAdapter.chatWithAnalyst(message, context);
       }
-      
-      try {
-        const systemPrompt = `You are a research analyst assistant. Help users understand complex topics by providing clear, well-structured analysis. Break down information into key points, identify important patterns, and suggest relevant follow-up questions.`;
-        
-        let fullMessage = message;
-        if (context) {
-          fullMessage = `Context: ${context}\n\nQuestion: ${message}`;
-        }
-        
-        return await promptAdapter.promptOnce(fullMessage, { 
-          systemPrompt,
-          temperature: 0.6 
-        });
-      } catch (error) {
-        // Auto-fallback to cloud if on-device fails
-        if (firebaseAdapter.isAvailable()) {
-          console.debug('[TruthLens Queries] Auto-fallback to cloud for chat');
-          return await firebaseAdapter.chatWithAnalyst(message, context);
-        }
-        throw error;
+
+      const systemPrompt = `You are a research analyst assistant. Help users understand complex topics by providing clear, well-structured analysis. Break down information into key points, identify important patterns, and suggest relevant follow-up questions.`;
+
+      let fullMessage = message;
+      if (context) {
+        fullMessage = `Context: ${context}\n\nQuestion: ${message}`;
       }
+
+      // Prefer on-device in panel; if unavailable, try content bridge
+      const onDeviceAvailable = await promptAdapter.checkAvailability().catch(() => false);
+      if (onDeviceAvailable) {
+        try {
+          return await promptAdapter.promptOnce(fullMessage, { systemPrompt, temperature: 0.6 });
+        } catch (error) {
+          console.debug('[TruthLens Queries] On-device chat failed in panel, trying bridge:', error);
+        }
+      }
+
+      try {
+        return await promptViaContent(fullMessage, systemPrompt);
+      } catch (bridgeErr) {
+        console.debug('[TruthLens Queries] Content-bridge chat failed:', bridgeErr);
+      }
+
+      // Final fallback to cloud
+      if (firebaseAdapter.isAvailable()) {
+        console.debug('[TruthLens Queries] Auto-fallback to cloud for chat');
+        return await firebaseAdapter.chatWithAnalyst(message, context);
+      }
+      throw new Error('No AI service available for chat');
     },
     onError: (error) => {
       console.error('[TruthLens Queries] Chat mutation failed:', error);
@@ -286,7 +326,7 @@ export const useChatMutation = () => {
 // Utility hooks for cache management
 export const useInvalidateQueries = () => {
   const queryClient = useQueryClient();
-  
+
   return {
     invalidateCapabilities: () => queryClient.invalidateQueries({ queryKey: queryKeys.capabilities }),
     invalidateFactChecks: () => queryClient.invalidateQueries({ queryKey: ['factCheck'] }),
@@ -297,7 +337,7 @@ export const useInvalidateQueries = () => {
 
 export const usePrefetchFactCheck = () => {
   const queryClient = useQueryClient();
-  
+
   return (claim: string) => {
     if (claim && claim.trim().length >= 10) {
       queryClient.prefetchQuery({

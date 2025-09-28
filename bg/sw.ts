@@ -43,7 +43,14 @@ interface ServiceWorkerToPanelMessage extends TruthLensMessage {
 }
 
 interface ServiceWorkerToContentMessage extends TruthLensMessage {
-  type: 'TL_GET_SELECTION' | 'TL_GET_PAGE_TEXT' | 'TL_INJECT_SERP_OVERLAY' | 'TL_SHOW_SELECTION_BUBBLE' | 'TL_CHECK_CAPABILITIES';
+  type:
+    | 'TL_GET_SELECTION'
+    | 'TL_GET_PAGE_TEXT'
+    | 'TL_INJECT_SERP_OVERLAY'
+    | 'TL_SHOW_SELECTION_BUBBLE'
+    | 'TL_CHECK_CAPABILITIES'
+    | 'TL_ONDEVICE_PROMPT'
+    | 'TL_EXTRACT_CLAIMS';
 }
 
 interface TruthLensResponse {
@@ -218,7 +225,14 @@ async function processIncomingMessage(
   switch (message.type) {
     case 'TL_GET_SELECTION':
     case 'TL_GET_PAGE_TEXT':
-      // Forward to panel
+      // Ensure side panel is open for this tab, then forward to panel
+      if (sender.tab?.id) {
+        try {
+          await chrome.sidePanel.open({ tabId: sender.tab.id });
+        } catch (e) {
+          console.debug('[TruthLens] Could not open side panel (may already be open):', e);
+        }
+      }
       if (sender.tab?.id && message.payload) {
         const payload = message.payload as { text?: string; url?: string; action?: 'fact-check' | 'ask-analyst' };
         await sendMessageToPanel({
@@ -350,7 +364,13 @@ async function sendMessageToContent(
       timestamp: Date.now()
     });
   } catch (error) {
-    console.error('[TruthLens] Error sending message to content script:', error);
+    // Try to inject the content script and retry once
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ['content/content.js'] });
+      await chrome.tabs.sendMessage(tabId, { ...message, timestamp: Date.now() });
+    } catch (e) {
+      console.error('[TruthLens] Error sending message to content script:', e);
+    }
   }
 }
 

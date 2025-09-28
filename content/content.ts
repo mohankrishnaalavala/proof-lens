@@ -15,7 +15,14 @@ interface ContentToServiceWorkerMessage extends TruthLensMessage {
 }
 
 interface ServiceWorkerToContentMessage extends TruthLensMessage {
-  type: 'TL_GET_SELECTION' | 'TL_GET_PAGE_TEXT' | 'TL_INJECT_SERP_OVERLAY' | 'TL_SHOW_SELECTION_BUBBLE' | 'TL_CHECK_CAPABILITIES';
+  type:
+    | 'TL_GET_SELECTION'
+    | 'TL_GET_PAGE_TEXT'
+    | 'TL_INJECT_SERP_OVERLAY'
+    | 'TL_SHOW_SELECTION_BUBBLE'
+    | 'TL_CHECK_CAPABILITIES'
+    | 'TL_ONDEVICE_PROMPT'
+    | 'TL_EXTRACT_CLAIMS';
 }
 
 // Global state
@@ -39,38 +46,38 @@ if (isGoogleSearchPage) {
 chrome.runtime.onMessage.addListener((message: ServiceWorkerToContentMessage, _sender, sendResponse) => {
   console.debug('[TruthLens Content] Received message:', message.type);
 
+  // Async handlers that need to call sendResponse later
+  const asyncTypes = new Set(['TL_CHECK_CAPABILITIES', 'TL_ONDEVICE_PROMPT', 'TL_EXTRACT_CLAIMS']);
+
   try {
-    // Handle capability check specially since it needs async response
     if (message.type === 'TL_CHECK_CAPABILITIES') {
       handleCapabilityCheck().then(capabilities => {
-        sendResponse({
-          success: true,
-          capabilities,
-          timestamp: Date.now()
-        });
+        sendResponse({ success: true, capabilities, timestamp: Date.now() });
       }).catch(error => {
         console.error('[TruthLens Content] Error checking capabilities:', error);
-        sendResponse({
-          success: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          timestamp: Date.now()
-        });
+        sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error', timestamp: Date.now() });
       });
-      return true; // Async response
+    } else if (message.type === 'TL_ONDEVICE_PROMPT') {
+      const { message: userMessage, systemPrompt } = (message as any).payload || {};
+      handleOnDevicePrompt(String(userMessage || ''), systemPrompt ? String(systemPrompt) : undefined)
+        .then(response => sendResponse({ success: true, response, timestamp: Date.now() }))
+        .catch(error => sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error', timestamp: Date.now() }));
+    } else if (message.type === 'TL_EXTRACT_CLAIMS') {
+      const { text } = (message as any).payload || {};
+      handleExtractClaimsOnDevice(String(text || ''))
+        .then(claims => sendResponse({ success: true, claims, timestamp: Date.now() }))
+        .catch(error => sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error', timestamp: Date.now() }));
+    } else {
+      processMessage(message);
+      sendResponse({ success: true, timestamp: Date.now() });
     }
-
-    processMessage(message);
-    sendResponse({ success: true, timestamp: Date.now() });
   } catch (error) {
     console.error('[TruthLens Content] Error handling message:', error);
-    sendResponse({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: Date.now()
-    });
+    sendResponse({ success: false, error: error instanceof Error ? error.message : 'Unknown error', timestamp: Date.now() });
   }
 
-  return true; // Async response
+  // Return true when we plan to respond asynchronously
+  return asyncTypes.has(message.type as any);
 });
 
 /**
@@ -81,23 +88,80 @@ function processMessage(message: ServiceWorkerToContentMessage): void {
     case 'TL_GET_SELECTION':
       handleGetSelection(message.payload?.action);
       break;
-      
+
     case 'TL_GET_PAGE_TEXT':
       handleGetPageText(message.payload?.action);
       break;
-      
+
     case 'TL_INJECT_SERP_OVERLAY':
       handleInjectSerpOverlay(message.payload?.overlayHtml);
       break;
-      
+
     case 'TL_SHOW_SELECTION_BUBBLE':
       handleShowSelectionBubble(message.payload?.position);
       break;
-      
+
+    // Async types handled in the listener to return a Promise-based response
+    case 'TL_CHECK_CAPABILITIES':
+    case 'TL_ONDEVICE_PROMPT':
+    case 'TL_EXTRACT_CLAIMS':
+      // No-op here
+      break;
+
     default:
       console.warn('[TruthLens Content] Unknown message type:', message.type);
   }
 }
+// On-device prompt in content context
+async function handleOnDevicePrompt(userMessage: string, systemPrompt?: string): Promise<string> {
+  try {
+    if (!("ai" in window) || !("assistant" in (window as any).ai)) {
+      throw new Error('On-device assistant not available');
+    }
+    const ai: any = (window as any).ai;
+    const caps = await ai.assistant.capabilities();
+    if (caps.available !== 'readily' && caps.available !== 'after-download') {
+      throw new Error(`Assistant not available: ${caps.available}`);
+    }
+    const assistant = await ai.assistant.create({
+      systemPrompt: systemPrompt || 'You are a helpful research assistant.',
+      temperature: 0.4,
+      topK: 32,
+    });
+    const response: string = await assistant.prompt(userMessage);
+    try { (assistant as any)?.destroy?.(); } catch {}
+    return response;
+  } catch (error) {
+    console.error('[TruthLens Content] handleOnDevicePrompt error:', error);
+    throw error instanceof Error ? error : new Error('Unknown on-device prompt error');
+  }
+}
+
+// On-device claim extraction in content context
+async function handleExtractClaimsOnDevice(text: string): Promise<string[]> {
+  try {
+    const w: any = window as any;
+    if (w.ai && w.ai.summarizer) {
+      const caps = await w.ai.summarizer.capabilities();
+      if (caps.available === 'readily' || caps.available === 'after-download') {
+        const summarizer = await w.ai.summarizer.create({ type: 'key-points', length: 'medium' });
+        const result = await summarizer.summarize(text);
+        const lines = String(result || '').split(/\n+/).map((l: string) => l.replace(/^[-*]\s*/, '').trim()).filter((l: string) => l.length > 0);
+        try { summarizer?.destroy?.(); } catch {}
+        return lines.slice(0, 10);
+      }
+    }
+    // Fallback: use assistant with claim-extraction prompt
+    const prompt = `Extract up to 10 concise factual claims from the following text. Return one claim per line without numbering or extra commentary.\n\nText:\n"""${text}"""`;
+    const response = await handleOnDevicePrompt(prompt, 'You extract factual claims.');
+    const claims = response.split(/\n+/).map(l => l.replace(/^\d+\.\s*/, '').replace(/^[-*]\s*/, '').trim()).filter(l => l.length > 0);
+    return claims.slice(0, 10);
+  } catch (error) {
+    console.error('[TruthLens Content] handleExtractClaimsOnDevice error:', error);
+    throw error instanceof Error ? error : new Error('Unknown on-device extract error');
+  }
+}
+
 
 /**
  * Check Chrome AI capabilities (only available in content script context)
@@ -171,14 +235,14 @@ async function handleCapabilityCheck() {
 function handleGetSelection(action: 'fact-check' | 'ask-analyst' = 'fact-check'): void {
   const selection = window.getSelection();
   const selectedText = selection?.toString().trim();
-  
+
   if (!selectedText) {
     console.warn('[TruthLens Content] No text selected');
     return;
   }
-  
+
   console.debug('[TruthLens Content] Selected text:', selectedText.substring(0, 100) + '...');
-  
+
   sendMessageToServiceWorker({
     type: 'TL_GET_SELECTION',
     timestamp: Date.now(),
@@ -196,14 +260,14 @@ function handleGetSelection(action: 'fact-check' | 'ask-analyst' = 'fact-check')
 function handleGetPageText(action: 'fact-check' | 'ask-analyst' = 'fact-check'): void {
   // Extract main content text from the page
   const pageText = extractPageText();
-  
+
   if (!pageText) {
     console.warn('[TruthLens Content] No page text found');
     return;
   }
-  
+
   console.debug('[TruthLens Content] Page text extracted:', pageText.substring(0, 100) + '...');
-  
+
   sendMessageToServiceWorker({
     type: 'TL_GET_PAGE_TEXT',
     timestamp: Date.now(),

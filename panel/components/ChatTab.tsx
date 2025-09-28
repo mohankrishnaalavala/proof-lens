@@ -1,14 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { MessageCircle, Send, AlertCircle, Lightbulb, Search } from 'lucide-react';
 import { useCapabilities, useChatMutation } from '@/lib/state';
+import { useTruthLensStore } from '@/lib/state/store';
+import { truthLensCache } from '@/lib/state/cache';
 import type { ChatMessage } from '@/lib/types/messages';
 
 export function ChatTab() {
   const capabilities = useCapabilities();
-  // const { setSelectedText } = useTruthLensStore(); // Unused for now
+  const addChatMessage = useTruthLensStore((s) => s.addChatMessage);
   const chatMutation = useChatMutation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
@@ -71,6 +73,19 @@ export function ChatTab() {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+
+      // Persist to store and IDB (best-effort)
+      try {
+        addChatMessage(userMessage.content, assistantMessage.content, source);
+        await truthLensCache.storeChatMessage(
+          userMessage.content,
+          assistantMessage.content,
+          source,
+          contextText || undefined
+        );
+      } catch (e) {
+        console.debug('[TruthLens Chat] Failed to persist chat message:', e);
+      }
 
       // Clear context after successful response
       if (contextText) {

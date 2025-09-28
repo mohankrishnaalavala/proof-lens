@@ -81,10 +81,19 @@ export function ClaimsTab() {
 
   const handleManualFactCheck = async () => {
     try {
-      // Request text selection from current tab
+      // Request text selection from current tab; if content script missing, inject and retry
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tabs[0]?.id) {
-        await chrome.tabs.sendMessage(tabs[0].id, {
+      const tabId = tabs[0]?.id;
+      if (!tabId) throw new Error('Active tab not found');
+      try {
+        await chrome.tabs.sendMessage(tabId, {
+          type: 'TL_GET_SELECTION',
+          payload: { action: 'fact-check' },
+          timestamp: Date.now()
+        });
+      } catch (err) {
+        await chrome.scripting.executeScript({ target: { tabId }, files: ['content/content.js'] });
+        await chrome.tabs.sendMessage(tabId, {
           type: 'TL_GET_SELECTION',
           payload: { action: 'fact-check' },
           timestamp: Date.now()
@@ -94,7 +103,7 @@ export function ClaimsTab() {
       console.error('[TruthLens Claims] Error requesting text selection:', error);
 
       // Fallback: prompt user to select text
-      alert('Please select some text on the page and try again, or use the keyboard shortcut Alt+Shift+F');
+      alert('Please select text on the page and try again. On macOS: press Option+Shift+F.');
     }
   };
 
