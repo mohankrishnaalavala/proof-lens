@@ -6,7 +6,7 @@
 // Type definitions for Chrome extension messaging
 interface TruthLensMessage {
   type: string;
-  timestamp: number;
+  timestamp?: number;
   payload?: any;
 }
 

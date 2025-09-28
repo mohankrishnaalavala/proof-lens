@@ -3,14 +3,61 @@
  * Handles context menus, keyboard shortcuts, capability checks, and message routing
  */
 
-import type {
-  AllTruthLensMessages,
-  ChromeAICapabilities,
-  ServiceWorkerToPanelMessage,
-  ServiceWorkerToContentMessage,
-  TruthLensResponse,
-  SerpResult
-} from '../lib/types/messages.js';
+// Type definitions for Chrome extension messaging
+interface TruthLensMessage {
+  type: string;
+  timestamp?: number;
+  payload?: any;
+}
+
+interface ChromeAICapabilities {
+  promptAPI: {
+    available: boolean;
+    defaultTemperature?: number;
+    defaultTopK?: number;
+    maxTopK?: number;
+  };
+  summarizerAPI: {
+    available: boolean;
+    defaultType?: string;
+    defaultFormat?: string;
+    defaultLength?: string;
+  };
+  writerAPI: {
+    available: boolean;
+    defaultTone?: string;
+    defaultFormat?: string;
+    defaultLength?: string;
+  };
+  rewriterAPI: {
+    available: boolean;
+    defaultTone?: string;
+    defaultFormat?: string;
+    defaultLength?: string;
+  };
+}
+
+interface ServiceWorkerToPanelMessage extends TruthLensMessage {
+  type: 'TL_FACT_CHECK_RESULT' | 'TL_CHAT_RESPONSE' | 'TL_BRIEF_UPDATE' | 'TL_CAPABILITIES_UPDATE' | 'TL_CHAT_OPEN' | 'TL_TEXT_EXTRACTED' | 'TL_CAPABILITY_STATUS';
+  tabId?: number;
+}
+
+interface ServiceWorkerToContentMessage extends TruthLensMessage {
+  type: 'TL_GET_SELECTION' | 'TL_GET_PAGE_TEXT' | 'TL_INJECT_SERP_OVERLAY' | 'TL_SHOW_SELECTION_BUBBLE' | 'TL_CHECK_CAPABILITIES';
+}
+
+interface TruthLensResponse {
+  success: boolean;
+  timestamp: number;
+  data?: any;
+  error?: any;
+}
+
+interface SerpResult {
+  title: string;
+  url: string;
+  snippet: string;
+}
 
 // Context menu IDs
 const CONTEXT_MENU_IDS = {
@@ -160,33 +207,10 @@ chrome.commands.onCommand.addListener(async (command) => {
 });
 
 /**
- * Handle messages from content scripts and panel
- */
-chrome.runtime.onMessage.addListener((message: AllTruthLensMessages, sender, sendResponse) => {
-  handleMessage(message, sender)
-    .then(response => sendResponse(response))
-    .catch(error => {
-      console.error('[TruthLens] Error handling message:', error);
-      sendResponse({
-        success: false,
-        error: {
-          code: 'MESSAGE_HANDLER_ERROR',
-          message: error.message,
-          timestamp: Date.now()
-        },
-        timestamp: Date.now()
-      } as TruthLensResponse);
-    });
-
-  // Return true to indicate async response
-  return true;
-});
-
-/**
  * Handle incoming messages
  */
-async function handleMessage(
-  message: AllTruthLensMessages,
+async function processIncomingMessage(
+  message: TruthLensMessage,
   sender: chrome.runtime.MessageSender
 ): Promise<TruthLensResponse> {
   console.debug('[TruthLens] Received message:', message.type, message);
@@ -249,6 +273,29 @@ async function handleMessage(
       };
   }
 }
+
+/**
+ * Handle messages from content scripts and panel
+ */
+chrome.runtime.onMessage.addListener((message: TruthLensMessage, sender, sendResponse) => {
+  processIncomingMessage(message, sender)
+    .then(response => sendResponse(response))
+    .catch(error => {
+      console.error('[TruthLens] Error handling message:', error);
+      sendResponse({
+        success: false,
+        error: {
+          code: 'MESSAGE_HANDLER_ERROR',
+          message: error.message,
+          timestamp: Date.now()
+        },
+        timestamp: Date.now()
+      } as TruthLensResponse);
+    });
+
+  // Return true to indicate async response
+  return true;
+});
 
 /**
  * Check Chrome AI capabilities

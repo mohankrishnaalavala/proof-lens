@@ -5,8 +5,7 @@
   "description": "AI-powered fact-checking and research assistant using Chrome's built-in AI",
   "author": "TruthLens Team",
   "background": {
-    "service_worker": "bg/sw.js",
-    "type": "module"
+    "service_worker": "bg/sw.js"
   },
   "action": {
     "default_title": "Open TruthLens",
