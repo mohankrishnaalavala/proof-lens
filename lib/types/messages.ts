@@ -64,7 +64,8 @@ export interface ServiceWorkerToContentMessage extends TruthLensMessage {
     | 'TL_GET_SELECTION'
     | 'TL_GET_PAGE_TEXT'
     | 'TL_INJECT_SERP_OVERLAY'
-    | 'TL_SHOW_SELECTION_BUBBLE';
+    | 'TL_SHOW_SELECTION_BUBBLE'
+    | 'TL_CHECK_CAPABILITIES';
   payload?: {
     overlayHtml?: string;
     position?: { x: number; y: number };

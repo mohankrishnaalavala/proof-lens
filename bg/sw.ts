@@ -262,51 +262,28 @@ async function checkCapabilities(): Promise<ChromeAICapabilities> {
   };
 
   try {
-    // Check Prompt API (Gemini Nano)
-    if ('ai' in window && 'languageModel' in (window as any).ai) {
-      const canCreate = await (window as any).ai.languageModel.capabilities();
-      capabilities.promptAPI = {
-        available: canCreate.available === 'readily',
-        defaultTemperature: canCreate.defaultTemperature,
-        defaultTopK: canCreate.defaultTopK,
-        maxTopK: canCreate.maxTopK
-      };
+    // Get active tab to request capabilities from content script
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tabs[0]?.id) {
+      console.debug('[TruthLens] No active tab found, using default capabilities');
+      return capabilities;
     }
 
-    // Check Summarizer API
-    if ('ai' in window && 'summarizer' in (window as any).ai) {
-      const canCreate = await (window as any).ai.summarizer.capabilities();
-      capabilities.summarizerAPI = {
-        available: canCreate.available === 'readily',
-        defaultType: canCreate.defaultType,
-        defaultFormat: canCreate.defaultFormat,
-        defaultLength: canCreate.defaultLength
-      };
-    }
+    // Request capabilities from content script (where window.ai is available)
+    const response = await chrome.tabs.sendMessage(tabs[0].id, {
+      type: 'TL_CHECK_CAPABILITIES',
+      timestamp: Date.now()
+    });
 
-    // Check Writer API
-    if ('ai' in window && 'writer' in (window as any).ai) {
-      const canCreate = await (window as any).ai.writer.capabilities();
-      capabilities.writerAPI = {
-        available: canCreate.available === 'readily',
-        defaultTone: canCreate.defaultTone,
-        defaultFormat: canCreate.defaultFormat,
-        defaultLength: canCreate.defaultLength
-      };
-    }
-
-    // Check Rewriter API
-    if ('ai' in window && 'rewriter' in (window as any).ai) {
-      const canCreate = await (window as any).ai.rewriter.capabilities();
-      capabilities.rewriterAPI = {
-        available: canCreate.available === 'readily',
-        defaultTone: canCreate.defaultTone,
-        defaultFormat: canCreate.defaultFormat,
-        defaultLength: canCreate.defaultLength
-      };
+    if (response && response.capabilities) {
+      console.debug('[TruthLens] AI capabilities received from content script:', response.capabilities);
+      return response.capabilities;
+    } else {
+      console.debug('[TruthLens] No capabilities response from content script, using defaults');
+      return capabilities;
     }
   } catch (error) {
-    console.error('[TruthLens] Error checking AI capabilities:', error);
+    console.debug('[TruthLens] Error requesting capabilities from content script:', error);
   }
 
   console.debug('[TruthLens] AI capabilities:', capabilities);

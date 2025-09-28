@@ -30,6 +30,25 @@ chrome.runtime.onMessage.addListener((message: ServiceWorkerToContentMessage, _s
   console.debug('[TruthLens Content] Received message:', message.type);
 
   try {
+    // Handle capability check specially since it needs async response
+    if (message.type === 'TL_CHECK_CAPABILITIES') {
+      handleCapabilityCheck().then(capabilities => {
+        sendResponse({
+          success: true,
+          capabilities,
+          timestamp: Date.now()
+        });
+      }).catch(error => {
+        console.error('[TruthLens Content] Error checking capabilities:', error);
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          timestamp: Date.now()
+        });
+      });
+      return true; // Async response
+    }
+
     handleMessage(message);
     sendResponse({ success: true, timestamp: Date.now() });
   } catch (error) {
@@ -67,6 +86,72 @@ function handleMessage(message: ServiceWorkerToContentMessage): void {
       
     default:
       console.warn('[TruthLens Content] Unknown message type:', message.type);
+  }
+}
+
+/**
+ * Check Chrome AI capabilities (only available in content script context)
+ */
+async function handleCapabilityCheck() {
+  console.debug('[TruthLens Content] Checking AI capabilities...');
+
+  const capabilities = {
+    promptAPI: { available: false, defaultTemperature: 0.7, defaultTopK: 3, maxTopK: 8 },
+    summarizerAPI: { available: false, defaultType: 'key-points', defaultFormat: 'markdown', defaultLength: 'medium' },
+    writerAPI: { available: false, defaultTone: 'neutral', defaultFormat: 'markdown', defaultLength: 'medium' },
+    rewriterAPI: { available: false, defaultTone: 'neutral', defaultFormat: 'markdown', defaultLength: 'medium' }
+  };
+
+  try {
+    // Check Prompt API (Gemini Nano)
+    if ('ai' in window && 'languageModel' in (window as any).ai) {
+      const canCreate = await (window as any).ai.languageModel.capabilities();
+      capabilities.promptAPI = {
+        available: canCreate.available === 'readily',
+        defaultTemperature: canCreate.defaultTemperature || 0.7,
+        defaultTopK: canCreate.defaultTopK || 3,
+        maxTopK: canCreate.maxTopK || 8
+      };
+    }
+
+    // Check Summarizer API
+    if ('ai' in window && 'summarizer' in (window as any).ai) {
+      const canCreate = await (window as any).ai.summarizer.capabilities();
+      capabilities.summarizerAPI = {
+        available: canCreate.available === 'readily',
+        defaultType: canCreate.defaultType || 'key-points',
+        defaultFormat: canCreate.defaultFormat || 'markdown',
+        defaultLength: canCreate.defaultLength || 'medium'
+      };
+    }
+
+    // Check Writer API
+    if ('ai' in window && 'writer' in (window as any).ai) {
+      const canCreate = await (window as any).ai.writer.capabilities();
+      capabilities.writerAPI = {
+        available: canCreate.available === 'readily',
+        defaultTone: canCreate.defaultTone || 'neutral',
+        defaultFormat: canCreate.defaultFormat || 'markdown',
+        defaultLength: canCreate.defaultLength || 'medium'
+      };
+    }
+
+    // Check Rewriter API
+    if ('ai' in window && 'rewriter' in (window as any).ai) {
+      const canCreate = await (window as any).ai.rewriter.capabilities();
+      capabilities.rewriterAPI = {
+        available: canCreate.available === 'readily',
+        defaultTone: canCreate.defaultTone || 'neutral',
+        defaultFormat: canCreate.defaultFormat || 'markdown',
+        defaultLength: canCreate.defaultLength || 'medium'
+      };
+    }
+
+    console.debug('[TruthLens Content] AI capabilities checked:', capabilities);
+    return capabilities;
+  } catch (error) {
+    console.debug('[TruthLens Content] Error checking AI capabilities:', error);
+    return capabilities;
   }
 }
 
