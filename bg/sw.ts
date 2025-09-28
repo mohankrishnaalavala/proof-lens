@@ -378,12 +378,18 @@ async function sendMessageToContent(
  * Send message to panel
  */
 async function sendMessageToPanel(message: ServiceWorkerToPanelMessage): Promise<void> {
-  try {
-    await chrome.runtime.sendMessage({
-      ...message,
-      timestamp: Date.now()
-    });
-  } catch (error) {
-    console.error('[TruthLens] Error sending message to panel:', error);
+  const payload = { ...message, timestamp: Date.now() };
+  const maxAttempts = 5;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await chrome.runtime.sendMessage(payload);
+      return;
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        console.debug('[TruthLens] Could not reach panel after retries; panel may not be open yet.', error);
+        return;
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
   }
 }

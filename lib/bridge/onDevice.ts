@@ -19,6 +19,9 @@ export async function promptViaContent(message: string, systemPrompt?: string): 
         payload: { message, systemPrompt },
         timestamp: Date.now(),
       });
+      if (resp && resp.success === false) {
+        throw new Error((resp.error as string) || 'On-device prompt failed');
+      }
       const text: string = (resp && (resp.response as string)) || (resp && (resp.text as string)) || '';
       if (!text) throw new Error('Empty response from on-device assistant');
       return { response: text, source: 'on-device', timestamp: Date.now() };
@@ -30,6 +33,9 @@ export async function promptViaContent(message: string, systemPrompt?: string): 
         payload: { message, systemPrompt },
         timestamp: Date.now(),
       });
+      if (resp && resp.success === false) {
+        throw new Error((resp.error as string) || 'On-device prompt failed (after inject)');
+      }
       const text: string = (resp && (resp.response as string)) || (resp && (resp.text as string)) || '';
       if (!text) throw new Error('Empty response from on-device assistant (after inject)');
       return { response: text, source: 'on-device', timestamp: Date.now() };
@@ -54,6 +60,9 @@ export async function extractClaimsViaContent(text: string): Promise<string[]> {
         payload: { text },
         timestamp: Date.now(),
       });
+      if (resp && resp.success === false) {
+        throw new Error((resp.error as string) || 'On-device extract failed');
+      }
       const claims: string[] = (resp && (resp.claims as string[])) || [];
       return claims;
     } catch (err) {
@@ -63,6 +72,9 @@ export async function extractClaimsViaContent(text: string): Promise<string[]> {
         payload: { text },
         timestamp: Date.now(),
       });
+      if (resp && resp.success === false) {
+        throw new Error((resp.error as string) || 'On-device extract failed');
+      }
       const claims: string[] = (resp && (resp.claims as string[])) || [];
       return claims;
     }

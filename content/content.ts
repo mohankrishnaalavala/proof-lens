@@ -25,10 +25,10 @@ interface ServiceWorkerToContentMessage extends TruthLensMessage {
     | 'TL_EXTRACT_CLAIMS';
 }
 
-// Global state
-let selectionBubbleTimeout: NodeJS.Timeout | null = null;
-let lastSelection: string = '';
-let isGoogleSearchPage = false;
+// Global state (use var to avoid redeclare errors if script is injected twice)
+var selectionBubbleTimeout: number | null = null;
+var lastSelection: string = '';
+var isGoogleSearchPage = false;
 
 // Initialize content script
 console.debug('[TruthLens Content] Initializing...');
@@ -925,7 +925,7 @@ function setupBubbleEventListeners(bubble: HTMLElement): void {
   }, 100);
 
   // Auto-remove after 10 seconds
-  selectionBubbleTimeout = setTimeout(() => {
+  selectionBubbleTimeout = window.setTimeout(() => {
     removeBubbleWithAnimation(bubble);
   }, 10000);
 }
@@ -993,10 +993,10 @@ function handleKeyUp(event: KeyboardEvent): void {
 function handleSelectionChange(): void {
   // Debounce selection changes
   if (selectionBubbleTimeout) {
-    clearTimeout(selectionBubbleTimeout);
+    window.clearTimeout(selectionBubbleTimeout as number);
   }
 
-  selectionBubbleTimeout = setTimeout(() => {
+  selectionBubbleTimeout = window.setTimeout(() => {
     const selection = window.getSelection();
     const selectedText = selection?.toString().trim();
 
