@@ -21,12 +21,16 @@ export function Options() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [capabilities, setCapabilities] = useState<any>(null);
+  const [apiKey, setApiKey] = useState<string>('');
 
   useEffect(() => {
     // Load saved options
-    chrome.storage.sync.get(['truthlensOptions'], (result) => {
+    chrome.storage.sync.get(['truthlensOptions','factCheckApiKey'], (result) => {
       if (result['truthlensOptions']) {
         setOptions(result['truthlensOptions']);
+      }
+      if (typeof result['factCheckApiKey'] === 'string') {
+        setApiKey(result['factCheckApiKey']);
       }
     });
 
@@ -70,14 +74,20 @@ export function Options() {
       telemetryEnabled: false,
       autoFactCheckEnabled: false
     };
-    
+
     setOptions(defaultOptions);
-    
+    setApiKey('');
+
     try {
-      await chrome.storage.sync.set({ truthlensOptions: defaultOptions });
+      await chrome.storage.sync.set({ truthlensOptions: defaultOptions, factCheckApiKey: '' });
       chrome.runtime.sendMessage({
         type: 'TL_OPTIONS_UPDATED',
         payload: { options: defaultOptions },
+        timestamp: Date.now()
+      });
+      chrome.runtime.sendMessage({
+        type: 'TL_FACTCHECK_KEY_UPDATED',
+        payload: { apiKey: '' },
         timestamp: Date.now()
       });
     } catch (error) {
@@ -182,6 +192,46 @@ export function Options() {
               </div>
             </div>
           )}
+
+          {/* Fact Check Tools API Key */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Google Fact Check Tools API Key</label>
+            <input
+              className="w-full px-3 py-2 border rounded-md text-sm"
+              type="password"
+              value={apiKey}
+              placeholder="Paste your API key"
+              onChange={(e) => setApiKey((e.target as HTMLInputElement).value)}
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await chrome.storage.sync.set({ factCheckApiKey: apiKey });
+                    chrome.runtime.sendMessage({
+                      type: 'TL_FACTCHECK_KEY_UPDATED',
+                      payload: { apiKey },
+                      timestamp: Date.now()
+                    });
+                  } catch (error) {
+                    console.error('Error saving API key:', error);
+                  }
+                }}
+              >
+                Save API Key
+              </Button>
+              {apiKey && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => window.open('https://console.cloud.google.com/apis/library/factchecktools.googleapis.com', '_blank')}
+                >
+                  Get/Manage Key
+                </Button>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
