@@ -129,6 +129,28 @@ async function setupContextMenus(): Promise<void> {
 }
 
 /**
+ * Best-effort panel opener.
+ * Tries side panel; if Chrome requires a direct user gesture, falls back to a popup window.
+ */
+async function openPanelForTab(tabId: number): Promise<void> {
+  try {
+    await chrome.sidePanel.open({ tabId });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg?.includes('only be called in response to a user gesture')) {
+      try {
+        const url = chrome.runtime.getURL('panel/index.html');
+        await chrome.windows.create({ url, type: 'popup', width: 420, height: 700 });
+      } catch (popupErr) {
+        console.error('[TruthLens] Popup fallback failed:', popupErr);
+      }
+    } else {
+      console.debug('[TruthLens] sidePanel.open failed (may already be open):', err);
+    }
+  }
+}
+
+/**
  * Handle context menu clicks
  */
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -138,8 +160,8 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 
   try {
-    // Open side panel
-    await chrome.sidePanel.open({ tabId: tab.id });
+    // Open side panel or popup fallback
+    await openPanelForTab(tab.id);
 
     // Send appropriate message based on menu item
     switch (info.menuItemId) {
@@ -189,11 +211,11 @@ chrome.commands.onCommand.addListener(async (command) => {
 
     switch (command) {
       case COMMAND_IDS.TOGGLE_PANEL:
-        await chrome.sidePanel.open({ tabId: tab.id });
+        await openPanelForTab(tab.id);
         break;
 
       case COMMAND_IDS.FACT_CHECK_SELECTION:
-        await chrome.sidePanel.open({ tabId: tab.id });
+        await openPanelForTab(tab.id);
         await sendMessageToContent(tab.id, {
           type: 'TL_GET_SELECTION',
           payload: { action: 'fact-check' }
@@ -201,7 +223,7 @@ chrome.commands.onCommand.addListener(async (command) => {
         break;
 
       case COMMAND_IDS.ASK_ANALYST:
-        await chrome.sidePanel.open({ tabId: tab.id });
+        await openPanelForTab(tab.id);
         await sendMessageToContent(tab.id, {
           type: 'TL_GET_SELECTION',
           payload: { action: 'ask-analyst' }
@@ -228,9 +250,9 @@ async function processIncomingMessage(
       // Ensure side panel is open for this tab, then forward to panel
       if (sender.tab?.id) {
         try {
-          await chrome.sidePanel.open({ tabId: sender.tab.id });
+          await openPanelForTab(sender.tab.id);
         } catch (e) {
-          console.debug('[TruthLens] Could not open side panel (may already be open):', e);
+          console.debug('[TruthLens] Could not open side panel/popup:', e);
         }
       }
       if (sender.tab?.id && message.payload) {
