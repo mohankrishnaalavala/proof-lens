@@ -13,6 +13,14 @@ export async function promptViaContent(message: string, systemPrompt?: string): 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('Active tab not found');
 
+    const url = typeof tab.url === 'string' ? tab.url : '';
+    const isWebPage = /^https?:\/\//i.test(url);
+    if (!isWebPage) {
+      const err: any = new Error('Active tab is not an accessible webpage');
+      err.code = 'NOT_AVAILABLE';
+      throw err;
+    }
+
     try {
       const resp = await chrome.tabs.sendMessage(tab.id, {
         type: 'TL_ONDEVICE_PROMPT',
@@ -42,7 +50,9 @@ export async function promptViaContent(message: string, systemPrompt?: string): 
     }
   } catch (error) {
     console.error('[TruthLens Bridge] promptViaContent failed:', error);
-    throw error instanceof Error ? error : new Error('promptViaContent failed');
+    const e: any = error instanceof Error ? error : new Error('promptViaContent failed');
+    if (!e.code) e.code = 'BRIDGE_ERROR';
+    throw e;
   }
 }
 
@@ -53,6 +63,14 @@ export async function extractClaimsViaContent(text: string): Promise<string[]> {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) throw new Error('Active tab not found');
+
+    const url = typeof tab.url === 'string' ? tab.url : '';
+    const isWebPage = /^https?:\/\//i.test(url);
+    if (!isWebPage) {
+      const err: any = new Error('Active tab is not an accessible webpage');
+      err.code = 'NOT_AVAILABLE';
+      throw err;
+    }
 
     try {
       const resp = await chrome.tabs.sendMessage(tab.id, {
@@ -80,7 +98,9 @@ export async function extractClaimsViaContent(text: string): Promise<string[]> {
     }
   } catch (error) {
     console.error('[TruthLens Bridge] extractClaimsViaContent failed:', error);
-    throw error instanceof Error ? error : new Error('extractClaimsViaContent failed');
+    const e: any = error instanceof Error ? error : new Error('extractClaimsViaContent failed');
+    if (!e.code) e.code = 'BRIDGE_ERROR';
+    throw e;
   }
 }
 

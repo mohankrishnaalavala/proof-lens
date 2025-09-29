@@ -107,8 +107,17 @@ export function ClaimsTab() {
     try {
       // Request text selection from current tab; if content script missing, inject and retry
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const tabId = tabs[0]?.id;
+      const tab = tabs[0];
+      const tabId = tab?.id;
       if (!tabId) throw new Error('Active tab not found');
+
+      const url = typeof tab.url === 'string' ? tab.url : '';
+      const isWebPage = /^https?:\/\//i.test(url);
+      if (!isWebPage) {
+        alert('Please switch to a normal web page (http/https) and try again. Chrome internal pages are not accessible.');
+        return;
+      }
+
       try {
         await chrome.tabs.sendMessage(tabId, {
           type: 'TL_GET_SELECTION',

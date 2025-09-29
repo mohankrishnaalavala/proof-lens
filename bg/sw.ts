@@ -350,13 +350,22 @@ async function checkCapabilities(): Promise<ChromeAICapabilities> {
   try {
     // Get active tab to request capabilities from content script
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tabs[0]?.id) {
+    const tab = tabs[0];
+    if (!tab?.id) {
       console.debug('[TruthLens] No active tab found, using default capabilities');
       return capabilities;
     }
 
+    // Only attempt content-capabilities on normal webpages (http/https)
+    const url = typeof tab.url === 'string' ? tab.url : '';
+    const isWebPage = /^https?:\/\//i.test(url);
+    if (!isWebPage) {
+      console.debug('[TruthLens] Active tab is not a webpage (skipping capability probe):', url);
+      return capabilities;
+    }
+
     // Request capabilities from content script (where window.ai is available)
-    const response = await chrome.tabs.sendMessage(tabs[0].id, {
+    const response = await chrome.tabs.sendMessage(tab.id, {
       type: 'TL_CHECK_CAPABILITIES',
       timestamp: Date.now()
     });
