@@ -20,6 +20,7 @@ export function ClaimsTab() {
 
   const [extractedText, setExtractedText] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [directCheckDone, setDirectCheckDone] = useState(false);
 
   // Extract claims from text
   const {
@@ -35,8 +36,9 @@ export function ClaimsTab() {
     // Listen for text extraction messages
     const handleMessage = (message: any) => {
       if (message.type === 'TL_TEXT_EXTRACTED' && message.payload?.action === 'fact-check') {
-        setExtractedText(message.payload.text);
-        setSelectedText(message.payload.text);
+        setExtractedText(message.payload.text as string);
+        setSelectedText(message.payload.text as string);
+        setDirectCheckDone(false);
       }
     };
 
@@ -62,6 +64,28 @@ export function ClaimsTab() {
       setIsAnalyzing(false);
     }
   }, [extractedClaims, factCheckMutation, addFactCheck]);
+
+  // Fallback: if claim extraction is unavailable or fails, fact-check the selected text directly
+  useEffect(() => {
+    const text = (extractedText || '').trim();
+    const summarizerAvailable = !!capabilities.chromeAI?.summarizerAPI?.available;
+    if (!text || text.length < 10) return;
+
+    if ((extractError || !summarizerAvailable) && !isExtractingClaims && !directCheckDone) {
+      (async () => {
+        try {
+          setIsAnalyzing(true);
+          const result = await factCheckMutation.mutateAsync(text);
+          addFactCheck(result);
+          setDirectCheckDone(true);
+        } catch (error) {
+          console.error('[TruthLens Claims] Direct fact-check failed:', error);
+        } finally {
+          setIsAnalyzing(false);
+        }
+      })();
+    }
+  }, [extractedText, extractError, isExtractingClaims, factCheckMutation, addFactCheck, directCheckDone, capabilities]);
 
   // Future feature: manual text input fact-checking
   // const handleManualFactCheckText = async (text: string) => {
