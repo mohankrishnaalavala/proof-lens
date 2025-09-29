@@ -85,12 +85,15 @@ const COMMAND_IDS = {
  */
 chrome.runtime.onInstalled.addListener(async () => {
   console.debug('[TruthLens] Service worker installed');
+  // Clicking the toolbar icon should open the side panel automatically
+  try { await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }); } catch (e) { console.debug('[TruthLens] setPanelBehavior failed:', e); }
   await setupContextMenus();
   await checkCapabilities();
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   console.debug('[TruthLens] Service worker started');
+  try { await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }); } catch (e) { console.debug('[TruthLens] setPanelBehavior failed:', e); }
   await setupContextMenus();
   await checkCapabilities();
 });
