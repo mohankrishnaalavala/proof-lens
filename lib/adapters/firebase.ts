@@ -41,6 +41,26 @@ class FirebaseCloudAdapter {
 
   constructor() {
     this.loadConfiguration();
+
+    // Live-update configuration when Options change
+    try {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'sync') return;
+        if (changes['firebaseConfig']) {
+          const cfg = changes['firebaseConfig'].newValue as FirebaseConfig | null;
+          this.config = cfg || null;
+          this.isConfigured = !!this.config?.projectId;
+          this.baseUrl = this.isConfigured ? `https://us-central1-${this.config!.projectId}.cloudfunctions.net` : '';
+          console.debug('[TruthLens Firebase] firebaseConfig changed:', { configured: this.isConfigured });
+        }
+        if (changes['cloudFallbackEnabled']) {
+          this.isEnabled = Boolean(changes['cloudFallbackEnabled'].newValue);
+          console.debug('[TruthLens Firebase] cloudFallbackEnabled changed:', this.isEnabled);
+        }
+      });
+    } catch (err) {
+      console.debug('[TruthLens Firebase] storage listener setup failed:', err);
+    }
   }
 
   /**

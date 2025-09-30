@@ -30,18 +30,14 @@ export const createQueryClient = () => {
       queries: {
         staleTime: 5 * 60 * 1000, // 5 minutes
         gcTime: 24 * 60 * 60 * 1000, // 24 hours (formerly cacheTime)
-        retry: (failureCount, error) => {
-          // Don't retry on certain errors
-          if ((error as any)?.code === 'NOT_AVAILABLE' || (error as any)?.code === 'API_KEY_MISSING') {
-            return false;
-          }
-          return failureCount < 2;
-        },
+        // Stop noisy automatic retries that can cause UI hangs on unavailable on-device AI
+        retry: false,
         refetchOnWindowFocus: false,
         refetchOnReconnect: true,
       },
+      // Mutations should not auto-retry to avoid duplicate requests and loops
       mutations: {
-        retry: 1,
+        retry: 0,
       },
     },
   });
@@ -85,7 +81,8 @@ export const useCapabilitiesQuery = () => {
       };
     },
     staleTime: 2 * 60 * 1000, // 2 minutes
-    refetchInterval: 5 * 60 * 1000, // Check every 5 minutes
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 };
 
@@ -120,6 +117,8 @@ export const useFactCheckQuery = (claim: string, enabled: boolean = true) => {
 export const useExtractClaimsQuery = (text: string, enabled: boolean = true) => {
   return useQuery({
     queryKey: queryKeys.extractClaims(text),
+    retry: false,
+    refetchOnWindowFocus: false,
     queryFn: async (): Promise<string[]> => {
       if (!text || text.trim().length < 50) {
         throw new Error('Text too short for claim extraction');
@@ -180,6 +179,8 @@ export const useSearchSynthesisQuery = (
 ) => {
   return useQuery({
     queryKey: queryKeys.searchSynthesis(query, results),
+    retry: false,
+    refetchOnWindowFocus: false,
     queryFn: async (): Promise<AIResult> => {
       if (!query || !results || results.length === 0) {
         throw new Error('Invalid search parameters');
@@ -210,6 +211,7 @@ export const useFactCheckMutation = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    retry: 0,
     mutationFn: async (claim: string): Promise<FactCheckResult> => {
       return await factCheckAdapter.factCheck(claim);
     },
@@ -229,6 +231,7 @@ export const useFactCheckMutation = () => {
 // Prompt Mutation
 export const usePromptMutation = () => {
   return useMutation({
+    retry: 0,
     mutationFn: async ({
       message,
       systemPrompt,
@@ -274,6 +277,7 @@ export const usePromptMutation = () => {
 // Chat Mutation
 export const useChatMutation = () => {
   return useMutation({
+    retry: 0,
     mutationFn: async ({
       message,
       context,

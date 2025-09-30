@@ -112,27 +112,49 @@ function processMessage(message: ServiceWorkerToContentMessage): void {
       console.warn('[TruthLens Content] Unknown message type:', message.type);
   }
 }
-// On-device prompt in content context
+// On-device prompt in content context (supports assistant and languageModel APIs)
 async function handleOnDevicePrompt(userMessage: string, systemPrompt?: string): Promise<string> {
   try {
-    if (!("ai" in window) || !("assistant" in (window as any).ai)) {
-      throw new Error('On-device assistant not available');
+    if (!('ai' in window)) {
+      throw new Error('On-device AI not available');
     }
     const ai: any = (window as any).ai;
-    const caps = await ai.assistant.capabilities();
-    if (caps.available !== 'readily' && caps.available !== 'after-download') {
-      throw new Error(`Assistant not available: ${caps.available}`);
+
+    // Prefer the newer assistant API when present
+    if ('assistant' in ai) {
+      const caps = await ai.assistant.capabilities();
+      if (caps.available !== 'readily' && caps.available !== 'after-download') {
+        throw new Error(`Assistant not available: ${caps.available}`);
+      }
+      const assistant = await ai.assistant.create({
+        systemPrompt: systemPrompt || 'You are a helpful research assistant.',
+        temperature: 0.4,
+        topK: 32,
+      });
+      const response: string = await assistant.prompt(userMessage);
+      try { (assistant as any)?.destroy?.(); } catch {}
+      return response;
     }
-    const assistant = await ai.assistant.create({
-      systemPrompt: systemPrompt || 'You are a helpful research assistant.',
-      temperature: 0.4,
-      topK: 32,
-    });
-    const response: string = await assistant.prompt(userMessage);
-    try { (assistant as any)?.destroy?.(); } catch {}
-    return response;
+
+    // Fallback to languageModel Prompt API
+    if ('languageModel' in ai) {
+      const caps = await ai.languageModel.capabilities();
+      if (caps.available !== 'readily' && caps.available !== 'after-download') {
+        throw new Error(`Language model not available: ${caps.available}`);
+      }
+      const lm = await ai.languageModel.create({
+        temperature: 0.4,
+        topK: 32,
+      });
+      const effectivePrompt = systemPrompt ? `${systemPrompt}\n\n${userMessage}` : userMessage;
+      const response: string = await lm.prompt(effectivePrompt);
+      try { (lm as any)?.destroy?.(); } catch {}
+      return response;
+    }
+
+    throw new Error('On-device AI not available');
   } catch (error) {
-    console.error('[TruthLens Content] handleOnDevicePrompt error:', error);
+    console.debug('[TruthLens Content] handleOnDevicePrompt error:', error);
     throw error instanceof Error ? error : new Error('Unknown on-device prompt error');
   }
 }
@@ -491,7 +513,7 @@ function handleSerpParsing(): void {
       timestamp: Date.now(),
       payload: {
         query: getSearchQuery(),
-        results,
+        serpResults: results,
         url: window.location.href
       }
     });

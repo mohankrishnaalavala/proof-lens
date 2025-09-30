@@ -5,6 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, Cloud, Cpu, Shield, Zap } from 'lucide-react';
 
+// Local type for Firebase config saved in chrome.storage
+interface FirebaseConfig {
+  apiKey: string;
+  authDomain: string;
+  projectId: string;
+  storageBucket: string;
+  messagingSenderId: string;
+  appId: string;
+}
+
 interface OptionsState {
   cloudFallbackEnabled: boolean;
   feedGuardEnabled: boolean;
@@ -22,15 +32,29 @@ export function Options() {
   const [isSaving, setIsSaving] = useState(false);
   const [capabilities, setCapabilities] = useState<any>(null);
   const [apiKey, setApiKey] = useState<string>('');
+  const [firebaseConfig, setFirebaseConfig] = useState<FirebaseConfig>({
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: ''
+  });
 
   useEffect(() => {
     // Load saved options
-    chrome.storage.sync.get(['truthlensOptions','factCheckApiKey'], (result) => {
+    chrome.storage.sync.get(['truthlensOptions','factCheckApiKey','firebaseConfig','cloudFallbackEnabled'], (result) => {
       if (result['truthlensOptions']) {
         setOptions(result['truthlensOptions']);
       }
+      if (typeof result['cloudFallbackEnabled'] === 'boolean') {
+        setOptions(prev => ({ ...prev, cloudFallbackEnabled: result['cloudFallbackEnabled'] }));
+      }
       if (typeof result['factCheckApiKey'] === 'string') {
         setApiKey(result['factCheckApiKey']);
+      }
+      if (result['firebaseConfig']) {
+        setFirebaseConfig(result['firebaseConfig'] as FirebaseConfig);
       }
     });
 
@@ -48,12 +72,17 @@ export function Options() {
   const handleOptionChange = async (key: keyof OptionsState, value: boolean) => {
     const newOptions = { ...options, [key]: value };
     setOptions(newOptions);
-    
+
     setIsSaving(true);
-    
+
     try {
-      await chrome.storage.sync.set({ truthlensOptions: newOptions });
-      
+      // Keep both the structured options blob and a top-level flag for fast access in adapters
+      const toSave: Record<string, unknown> = { truthlensOptions: newOptions };
+      if (key === 'cloudFallbackEnabled') {
+        toSave['cloudFallbackEnabled'] = value;
+      }
+      await chrome.storage.sync.set(toSave);
+
       // Notify service worker of changes
       chrome.runtime.sendMessage({
         type: 'TL_OPTIONS_UPDATED',
@@ -107,6 +136,13 @@ export function Options() {
         <h1 className="text-2xl font-bold">TruthLens Options</h1>
         <p className="text-muted-foreground">Configure your fact-checking and analysis preferences</p>
       </div>
+      <div className="flex items-center justify-center gap-2">
+        <span className="text-xs text-muted-foreground">Cloud Fallback:</span>
+        <Badge variant={options.cloudFallbackEnabled ? 'source-cloud' : 'secondary'} className="text-xs">
+          {options.cloudFallbackEnabled ? 'Enabled' : 'Disabled'}
+        </Badge>
+      </div>
+
 
       {/* AI Capabilities Status */}
       <Card>
@@ -135,6 +171,77 @@ export function Options() {
                 </Badge>
               </div>
             </div>
+      {/* Cloud Fallback (Firebase) Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Cloud className="w-5 h-5" />
+            Cloud Fallback (Firebase)
+          </CardTitle>
+          <CardDescription>
+            Provide your Firebase project details so TruthLens can use cloud AI when on-device models are unavailable.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4">
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium">Project ID</span>
+              <input
+                className="border rounded px-3 py-2 bg-background"
+                placeholder="your-project-id"
+                value={firebaseConfig.projectId}
+                onChange={(e) => setFirebaseConfig({ ...firebaseConfig, projectId: e.target.value })}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-sm font-medium">API Key</span>
+              <input
+                className="border rounded px-3 py-2 bg-background"
+                placeholder="AIza..."
+                value={firebaseConfig.apiKey}
+                onChange={(e) => setFirebaseConfig({ ...firebaseConfig, apiKey: e.target.value })}
+              />
+            </label>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              onClick={async () => {
+                // Clear config
+                setFirebaseConfig({ apiKey: '', authDomain: '', projectId: '', storageBucket: '', messagingSenderId: '', appId: '' });
+                await chrome.storage.sync.set({ firebaseConfig: { apiKey: '', authDomain: '', projectId: '', storageBucket: '', messagingSenderId: '', appId: '' } });
+              }}
+            >
+              Clear
+            </Button>
+            <Button
+              onClick={async () => {
+                setIsSaving(true);
+                try {
+                  const cfg: FirebaseConfig = {
+                    ...firebaseConfig,
+                    // Safe defaults for unused fields
+                    authDomain: firebaseConfig.authDomain || `${firebaseConfig.projectId}.firebaseapp.com`,
+                    storageBucket: firebaseConfig.storageBucket || `${firebaseConfig.projectId}.appspot.com`,
+                    messagingSenderId: firebaseConfig.messagingSenderId || '',
+                    appId: firebaseConfig.appId || ''
+                  };
+                  await chrome.storage.sync.set({ firebaseConfig: cfg, cloudFallbackEnabled: options.cloudFallbackEnabled });
+                  // Optional: notify runtime for immediate uptake
+                  chrome.runtime.sendMessage({ type: 'TL_FIREBASE_CONFIG_UPDATED', timestamp: Date.now() }).catch(() => {});
+                } catch (error) {
+                  console.error('Error saving Firebase config:', error);
+                } finally {
+                  setTimeout(() => setIsSaving(false), 500);
+                }
+              }}
+            >
+              Save
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Writer API</span>
@@ -308,7 +415,7 @@ export function Options() {
             <div className="text-sm">
               <p className="font-medium text-blue-800 mb-1">Privacy First</p>
               <p className="text-blue-700">
-                TruthLens processes text on-device when possible. Cloud processing is clearly marked 
+                TruthLens processes text on-device when possible. Cloud processing is clearly marked
                 and only used when explicitly enabled.
               </p>
             </div>
