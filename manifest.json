@@ -1,0 +1,72 @@
+{
+  "manifest_version": 3,
+  "name": "TruthLens",
+  "version": "0.1.0",
+  "description": "AI-powered fact-checking and research assistant using Chrome's built-in AI",
+  "author": "TruthLens Team",
+  "background": {
+    "service_worker": "bg/sw.js"
+  },
+  "action": {
+    "default_title": "Open TruthLens",
+    "default_icon": {
+      "16": "icon48.png",
+      "32": "icon48.png",
+      "48": "icon48.png",
+      "128": "icon48.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "panel/index.html"
+  },
+  "options_page": "options/index.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "scripting",
+    "storage",
+    "sidePanel",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "https://factchecktools.googleapis.com/*",
+    "https://www.google.com/*",
+    "<all_urls>"
+  ],
+  "commands": {
+    "toggle-panel": {
+      "suggested_key": {
+        "default": "Alt+Shift+T",
+        "mac": "Alt+Shift+T"
+      },
+      "description": "Toggle TruthLens side panel"
+    },
+    "fact-check-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+F",
+        "mac": "Alt+Shift+F"
+      },
+      "description": "Fact-check current selection"
+    },
+    "ask-analyst": {
+      "suggested_key": {
+        "default": "Alt+Shift+A",
+        "mac": "Alt+Shift+A"
+      },
+      "description": "Ask analyst (chat)"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["panel/*", "content/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
